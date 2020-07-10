@@ -38,6 +38,12 @@
   <!-- Publish a static transform between the world and the base of the robot -->
   <node pkg="tf2_ros" type="static_transform_publisher" name="base_to_world" args="0 0 0 0 0 0 1 world base" />
 
+  <node name="baxter_tf2_broadcaster" pkg="baxter_tf2" type="baxter_broadcaster.py" respawn="false" output="screen" >
+    <param name="turtle" type="string" value="turtle2" />
+  </node>
+  <node name="turtle_pointer" pkg="baxter_tf2" type="turtle_tf2_listener.py" respawn="false" output="screen" >
+  </node>
+
   <!-- Run a python script to the send a service call to gazebo_ros to spawn a URDF robot -->
    <node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen"
 	args="-param robot_description -urdf -z 0.93 -model baxter
