@@ -19,7 +19,7 @@ unset your_hostname
 # will be overwritten by any variables set here.
 
 # Specify Baxter's hostname
-baxter_hostname="localhost"
+baxter_hostname="localhost.local"
 
 # Set *Either* your computers ip address or hostname. Please note if using
 # your_hostname that this must be resolvable to Baxter.
@@ -63,24 +63,20 @@ topdir=$(basename $(readlink -f $(dirname ${BASH_SOURCE[0]})))
 cat <<-EOF > ${tf}
 	[ -s "\${HOME}"/.bashrc ] && source "\${HOME}"/.bashrc
 	[ -s "\${HOME}"/.bash_profile ] && source "\${HOME}"/.bash_profile
-
 	# verify this script is moved out of baxter folder
 	if [[ -e "${topdir}/baxter_sdk/package.xml" ]]; then
 		echo -ne "EXITING - This script must be moved from the baxter folder \
 to the root of your catkin workspace.\n"
 		exit 1
 	fi
-
 	# verify ros_version lowercase
 	ros_version="$(tr [A-Z] [a-z] <<< "${ros_version}")"
-
 	# check for ros installation
 	if [ ! -d "/opt/ros" ] || [ ! "$(ls -A /opt/ros)" ]; then
 		echo "EXITING - No ROS installation found in /opt/ros."
 		echo "Is ROS installed?"
 		exit 1
 	fi
-
 	# if set, verify user has modified the baxter_hostname
 	if [ -n ${baxter_hostname} ] && \
 	[[ "${baxter_hostname}" == "baxter_hostname.local" ]]; then
@@ -88,14 +84,12 @@ to the root of your catkin workspace.\n"
 'baxter_hostname' variable to reflect Baxter's current hostname.\n"
 		exit 1
 	fi
-
 	# if set, verify user has modified their ip address (your_ip)
 	if [ -n ${your_ip} ] && [[ "${your_ip}" == "192.168.XXX.XXX" ]]; then
 		echo -ne "EXITING - Please edit this file, modifying the 'your_ip' \
 variable to reflect your current IP address.\n"
 		exit 1
 	fi
-
 	# if set, verify user has modified their computer hostname (your_hostname)
 	if [ -n ${your_hostname} ] && \
 	[[ "${your_hostname}" == "my_computer.local" ]]; then
@@ -103,21 +97,18 @@ variable to reflect your current IP address.\n"
 'your_hostname' variable to reflect your current PC hostname.\n"
 		exit 1
 	fi
-
 	# verify user does not have both their ip *and* hostname set
 	if [ -n "${your_ip}" ] && [ -n "${your_hostname}" ]; then
 		echo -ne "EXITING - Please edit this file, modifying to specify \
 *EITHER* your_ip or your_hostname.\n"
 		exit 1
 	fi
-
 	# verify that one of your_ip, your_hostname, ROS_IP, or ROS_HOSTNAME is set
 	if [ -z "${your_ip}" ] && [ -z "${your_hostname}" ]; then
 		echo -ne "EXITING - Please edit this file, modifying to specify \
 your_ip or your_hostname.\n"
 		exit 1	
 	fi
-
 	# verify specified ros version is installed
 	ros_setup="/opt/ros/\${ros_version}"
 	if [ ! -d "\${ros_setup}" ]; then
@@ -125,14 +116,12 @@ your_ip or your_hostname.\n"
 in \${ros_setup}.\n"
 		exit 1
 	fi
-
 	# verify the ros setup.sh file exists
 	if [ ! -s "\${ros_setup}"/setup.sh ]; then
 		echo -ne "EXITING - Failed to find the ROS environment script: \
 "\${ros_setup}"/setup.sh.\n"
 		exit 1
 	fi
-
 	# verify the user is running this script in the root of the catkin
 	# workspace and that the workspace has been compiled.
 	if [ ! -s "devel/setup.bash" ]; then
@@ -142,20 +131,16 @@ has been built (source /opt/ros/\${ros_version}/setup.sh; catkin_make).\n\
 3) Run this script again upon completion of your workspace build.\n"
 		exit 1
 	fi
-
 	[ -n "${your_ip}" ] && export ROS_IP="${your_ip}"
 	[ -n "${your_hostname}" ] && export ROS_HOSTNAME="${your_hostname}"
 	[ -n "${baxter_hostname}" ] && \
 		export ROS_MASTER_URI="http://${baxter_hostname}:11311"
-
 	# source the catkin setup bash script
 	source devel/setup.bash
-
 	# setup the bash prompt
 	export __ROS_PROMPT=\${__ROS_PROMPT:-0}
 	[ \${__ROS_PROMPT} -eq 0 -a -n "\${PROMPT_COMMAND}" ] && \
 		export __ORIG_PROMPT_COMMAND=\${PROMPT_COMMAND}
-
 	__ros_prompt () {
 		if [ -n "\${__ORIG_PROMPT_COMMAND}" ]; then
 			eval \${__ORIG_PROMPT_COMMAND}
@@ -165,14 +150,12 @@ has been built (source /opt/ros/\${ros_version}/setup.sh; catkin_make).\n\
 \${ROS_MASTER_URI}]\[\033[00m\] \${PS1}"
 		fi
 	}
-
 	if [ "\${TERM}" != "dumb" ]; then
 		export PROMPT_COMMAND=__ros_prompt
 		__ROS_PROMPT=1
 	elif ! echo \${PS1} | grep '\[baxter' &>/dev/null; then
 		export PS1="[baxter - \${ROS_MASTER_URI}] \${PS1}"
 	fi
-
 EOF
 
 ${SHELL} --rcfile ${tf}
