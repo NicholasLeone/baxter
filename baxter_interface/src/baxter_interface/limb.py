@@ -444,7 +444,7 @@ class Limb(object):
             timeout=timeout,
             timeout_msg=("%s limb failed to reach commanded joint positions" %
                          (self.name.capitalize(),)),
-            rate=100,
+            rate=10000,
             raise_on_error=False,
             body=lambda: self.set_joint_positions(filtered_cmd())
             )
