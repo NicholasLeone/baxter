@@ -93,10 +93,17 @@ from control_msgs.msg import (
 from trajectory_msgs.msg import (
     JointTrajectoryPoint,
 )
+from scipy import linalg
+from scipy.linalg import null_space
+import PyKDL
+from baxter_kdl.kdl_parser import kdl_tree_from_urdf_model
+from urdf_parser_py.urdf import URDF
 
 
 class PickAndPlace(object):
     def __init__(self, limb, hover_distance = 0.15, verbose=True):
+        self._baxter = URDF.from_parameter_server(key='robot_description')
+        self._kdl_tree = kdl_tree_from_urdf_model(self._baxter)
         self._limb_name = limb # string
         self._hover_distance = hover_distance # in meters
         self._verbose = verbose # bool
@@ -104,6 +111,13 @@ class PickAndPlace(object):
         self._gripper = baxter_interface.Gripper(limb)
         self._kin = baxter_kinematics(limb)
         #self._traj = Trajectory(self._limb_name)
+        self._base_link = self._baxter.get_root()
+        self._tip_link = limb + '_gripper'
+        self._arm_chain = self._kdl_tree.getChain(self._base_link,
+                                                  self._tip_link)
+        self._jac_kdl = PyKDL.ChainJntToJacSolver(self._arm_chain)
+        self._joint_names = self._limb.joint_names()
+        
         
         
     
@@ -197,6 +211,32 @@ class PickAndPlace(object):
         joint_angles = self.ik_request(ik_pose)
         # servo up from current pose
         self._guarded_move_to_joint_position(joint_angles)
+    
+    def joints_to_kdl(self, type, values=None):
+        kdl_array = PyKDL.JntArray(len(self._limb.joint_names()))
+
+        if values is None:
+            if type == 'positions':
+                cur_type_values = self._limb.joint_angles()
+            elif type == 'velocities':
+                cur_type_values = self._limb.joint_velocities()
+            elif type == 'torques':
+                cur_type_values = self._limb.joint_efforts()
+        else:
+            cur_type_values = values
+        
+        for idx, name in enumerate(self._limb.joint_names()): #changed from joint_names()
+            kdl_array[idx] = cur_type_values[name]
+        if type == 'velocities':
+            kdl_array = PyKDL.JntArrayVel(kdl_array)
+        return kdl_array
+
+    def kdl_to_mat(self, data):
+        mat =  numpy.mat(numpy.zeros((data.rows(), data.columns())))
+        for i in range(data.rows()):
+            for j in range(data.columns()):
+                mat[i,j] = data[i,j]
+        return mat
 
     def _delta_x_position(self, delta):
         # retrieve current pose from endpoint
@@ -308,7 +348,6 @@ class PickAndPlace(object):
         self._guarded_move_to_joint_position(joint_angles)
     
     def _velocity_x(self, velocity):
-        count = 0
         current_angles = [self._limb.joint_angle(joint) for joint in self._limb.joint_names()]
         #while not rospy.is_shutdown():
         self._limb.set_joint_position_speed(0.1)
@@ -366,10 +405,21 @@ class PickAndPlace(object):
         
         
     def _velocity_z(self, velocity):
-        count = 0
+        start_time = time.time() 
+        j_j_transpose = numpy.dot(self._kin.jacobian(), self._kin.jacobian_transpose())
+        j_j_transpose = numpy.squeeze(numpy.asarray(j_j_transpose))
+        y = linalg.det(j_j_transpose)
+        j_j_inverse = numpy.dot(self._kin.jacobian(), self._kin.jacobian_pseudo_inverse())
+        j_j_inverse = numpy.squeeze(numpy.asarray(j_j_inverse))
+        j_j_inverse_j = numpy.dot(j_j_inverse, self._kin.jacobian())
+        j_j_inverse_j = numpy.squeeze(numpy.asarray(j_j_inverse_j))
+        projection_matrix = self._kin.jacobian() - j_j_inverse_j
+        projection_matrix = projection_matrix*y
+        velocity = j_j_inverse*velocity
+        adjusted_velocity = velocity - projection_matrix
+        
         current_angles = [self._limb.joint_angle(joint) for joint in self._limb.joint_names()]
-        self._limb.set_joint_position_speed(0.1)
-        start_time = time.time()                
+        self._limb.set_joint_position_speed(0.1)                       
         current_pose = self._limb.endpoint_pose()
         print(current_pose)
         ik_pose = Pose()                
@@ -381,7 +431,7 @@ class PickAndPlace(object):
         ik_pose.orientation.w = current_pose['orientation'].w 
         end_time = time.time()
         elapsed_time = end_time - start_time
-        delta_z = velocity*elapsed_time        
+        delta_z = adjusted_velocity*elapsed_time        
         ik_pose.position.z = current_pose['position'].z + delta_z*100
         joint_angles = self.ik_request(ik_pose)
         print(self._limb.joint_angles())
@@ -391,6 +441,87 @@ class PickAndPlace(object):
             current_joint_angles = self._ik_request(current_pose)
             self._limb.set_joint_positions(current_joint_angles)
     
+    def _velocity_2(self, velocity_x, velocity_y, velocity_z, angular_x, angular_y, angular_z):
+        start_time = time.time() 
+        jacobian = PyKDL.Jacobian(len(self._limb.joint_names()))
+        self._jac_kdl.JntToJac(self.joints_to_kdl('positions',self._limb.joint_angles()), jacobian)
+        jacobian_matrix = self.kdl_to_mat(jacobian)
+        jacobian_tranpose_matrix = jacobian_matrix.T
+        pseudo_jacobian_inverse_matrix = numpy.linalg.pinv(jacobian_matrix) 
+        j_j_tranpose = numpy.dot(jacobian_matrix, jacobian_tranpose_matrix)
+        j_j_tranpose = numpy.squeeze(numpy.asarray(j_j_tranpose))
+        manipulability_index = numpy.linalg.det(j_j_tranpose)
+        joint_names = self._limb.joint_names()
+        t_joint_angle_value = {}
+        t_joint_angles = self._limb.joint_angles()
+        null_joint_angles = []
+
+        for i in range(len(self._limb.joint_names())): #Append each joint velocity to a joint in the limb.
+            joint_name = joint_names[i]
+            t_joint_angle_value[joint_name] = self._limb.joint_angle(joint_name) + 0.001
+            t_joint_angles[joint_name] = t_joint_angle_value[joint_name]
+            t_jacobian = PyKDL.Jacobian(len(self._limb.joint_names()))
+            self._jac_kdl.JntToJac(self.joints_to_kdl('positions', t_joint_angles), t_jacobian)
+            t_jacobian_matrix = self.kdl_to_mat(t_jacobian)
+            t_jacobian_tranpose_matrix = t_jacobian_matrix.T
+            t_pseudo_jacobian_inverse_matrix = numpy.linalg.pinv(t_jacobian_matrix)
+            t_j_j_tranpose = numpy.dot(t_jacobian_matrix, t_jacobian_tranpose_matrix)
+            t_j_j_tranpose = numpy.squeeze(numpy.asarray(t_j_j_tranpose)) 
+            t_manipulability_index = numpy.linalg.det(t_j_j_tranpose)
+            null_joint_angles.append(manipulability_index - t_manipulability_index)
+        
+        null_joint_angles = numpy.asarray(null_joint_angles)
+        print(null_joint_angles)
+
+
+
+
+        velocity = numpy.array([velocity_x, velocity_y, velocity_z, angular_x, angular_y, angular_z])
+        j_j_inverse = numpy.dot(jacobian_matrix, pseudo_jacobian_inverse_matrix)
+        j_j_inverse = numpy.squeeze(numpy.asarray(j_j_inverse))
+        velocity = numpy.dot(pseudo_jacobian_inverse_matrix,velocity)
+        velocity = numpy.squeeze(numpy.asarray(velocity))
+                
+        adjusted_velocity = numpy.subtract(velocity, null_joint_angles)
+        print(adjusted_velocity)
+        
+        current_angles = [self._limb.joint_angle(joint) for joint in self._limb.joint_names()]
+        self._limb.set_joint_position_speed(0.1)                       
+        current_pose = self._limb.endpoint_pose()
+        #r= R.from_euler('xyz', [adjusted_velocity[3], adjusted_velocity[4], adjusted_velocity[5]], degrees=True)
+        #q = r.as_quat()
+        #print(current_pose)
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        adjusted_positions = adjusted_velocity*elapsed_time
+        #delta_x = adjusted_velocity[0]*elapsed_time
+        #delta_y = adjusted_velocity[1]*elapsed_time
+        #delta_z = adjusted_velocity[2]*elapsed_time  
+        #delta_x_orientation = q[0]*elapsed_time
+        #delta_y_orientation = q[1]*elapsed_time
+        #delta_z_orientation = q[2]*elapsed_time
+        #delta_w_orientation = q[3]*elapsed_time
+        ik_pose = Pose()                
+        ik_pose.position.y = current_pose['position'].y #+ delta_x*100
+        ik_pose.position.x = current_pose['position'].x #+ delta_y*100
+        ik_pose.orientation.x = current_pose['orientation'].x #+ delta_x_orientation*10
+        ik_pose.orientation.y = current_pose['orientation'].y #+ delta_y_orientation*10
+        ik_pose.orientation.z = current_pose['orientation'].z #+ delta_z_orientation*10
+        ik_pose.orientation.w = current_pose['orientation'].w #+ delta_w_orientation*10               
+        ik_pose.position.z = current_pose['position'].z #+ delta_z*100
+        #joint_angles = self.ik_request(ik_pose)
+        #print(joint_angles)
+        velocity_command = {}
+        joint_names = self._limb.joint_names()
+        
+        for i in range(len(adjusted_positions)): #Append each joint velocity to a joint in the limb.
+            joint_name = joint_names[i]
+            velocity_command[joint_name] = float(adjusted_positions[i]) + self._limb.joint_angle(joint_name) 
+            #print(velocity_command[joint_name])
+        #print(self._limb.endpoint_velocity())
+        #baxter_vel.publish(pose)
+        self._limb.set_joint_positions(velocity_command)
+
     def _angular_velocity(self, angular_velocity_x, angular_velocity_y, angular_velocity_z):
         r= R.from_euler('xyz', [angular_velocity_x, angular_velocity_y, angular_velocity_z], degrees=True)
         q = r.as_quat()
@@ -432,6 +563,15 @@ class PickAndPlace(object):
         
         count = count + 1
     
+    def _determinant(self):
+        #print(self._kin.jacobian_pseudo_inverse())
+        #print(self._kin.jacobian_transpose())
+        #print(self._kin.jacobian())
+        j_j_transpose = numpy.dot(self._kin.jacobian(), self._kin.jacobian_transpose())
+        j_j_transpose = numpy.squeeze(numpy.asarray(j_j_transpose))
+        y = numpy.square(linalg.det(j_j_transpose))
+        print(y)
+
     
 
 
@@ -574,6 +714,8 @@ def map_keyboard():
         'v': (pnp._angular_velocity, [30,0,0], "Angular Velocity X"),
         'b': (pnp._angular_velocity, [0,30,0], "Angular Velocity Y"),
         'n': (pnp._angular_velocity, [0,0,30], "Angular Velocity Z"),
+        'k': (pnp._velocity_2, [1,1,1,0,0,0], "Velocity Controller Activated"),
+        'j': (pnp._determinant, [], "Determinant"),
         'r': (pnp._neutral_position, [], "Resetting")
         
         
