@@ -99,11 +99,9 @@ class Trajectory(object):
 
 def main():
     """RSDK Joint Trajectory Example: Simple Action Client
-
     Creates a client of the Joint Trajectory Action Server
     to send commands of standard action type,
     control_msgs/FollowJointTrajectoryAction.
-
     Make sure to start the joint_trajectory_action_server.py
     first. Then run this example on a specified limb to
     command a short series of trajectory points for the arm
@@ -141,8 +139,19 @@ def main():
 
     p1 = positions[limb]
     traj.add_point(p1, 7.0)
-    traj.add_point([x * 0.75 for x in p1], 9.0)
-    traj.add_point([x * 1.25 for x in p1], 12.0)
+    traj.add_point([x * 0.1 for x in p1], 9.0)
+    traj.add_point([x * 0.2 for x in p1], 9.0)
+    traj.add_point([x * 0.3 for x in p1], 9.0)
+    traj.add_point([x * 0.4 for x in p1], 9.0)
+    traj.add_point([x * 0.5 for x in p1], 9.0)
+    traj.add_point([x * 0.6 for x in p1], 9.0)
+    traj.add_point([x * 0.7 for x in p1], 9.0)
+    traj.add_point([x * 0.8 for x in p1], 9.0)
+    traj.add_point([x * 0.9 for x in p1], 9.0)
+    traj.add_point([x * 1.0 for x in p1], 9.0)
+    traj.add_point([x * 1.1 for x in p1], 9.0)
+    traj.add_point([x * 1.2 for x in p1], 9.0)
+    traj.add_point([x * 1.3 for x in p1], 3.0)
     traj.start()
     traj.wait(15.0)
     print("Exiting - Joint Trajectory Action Test Complete")
