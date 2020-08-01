@@ -55,6 +55,8 @@ from scipy.spatial.transform import Rotation as R
 import geometry_msgs.msg
 from geometry_msgs.msg import TwistStamped
 import math
+from omni_msgs.msg import OmniState, OmniFeedback
+
 
 
 from gazebo_msgs.srv import (
@@ -213,6 +215,7 @@ class PickAndPlace(object):
         ik_pose.orientation.w = current_pose['orientation'].w
         joint_angles = self.ik_request(ik_pose)
         # servo up from current pose
+        
         self._guarded_move_to_joint_position(joint_angles)
     
     def joints_to_kdl(self, type, values=None):
@@ -335,7 +338,7 @@ class PickAndPlace(object):
         new_pose = self._limb.endpoint_pose
         print(new_pose) 
     
-    def _create_trajectory(self):
+    def _create_planned_trajectory(self):
         starting_pose = Pose()
         starting_pose = Pose(
             position=Point(x=0.5098537001460513, y=0.1832584024743113, z=0.1832584024743113),
@@ -353,6 +356,19 @@ class PickAndPlace(object):
             ik_pose.orientation.w = previous_pose.orientation.w
             self._trajectory.append(ik_pose)
         return self._trajectory
+    
+    def _create_trajectory(self,start_pose,end_pose, time):
+        traj_dist = np.subtract(end_pose, start_pose)
+        traj_delta = traj_dist/(time*100)
+        #first_step = start_pose + traj_delta
+        self._trajectory[0] = start_pose
+        for i in range(time*100-1):
+            next_traj = self._trajectory[i] + traj_delta
+            self._trajectory[i+1].append(next_traj)
+        return self._trajectory
+        
+            
+
 
     def _pose_to_array(self, pose):
         r = R.from_quat([pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w])
@@ -404,7 +420,7 @@ class PickAndPlace(object):
         force_pitch.publish(forces[4])
         force_yaw.publish(forces[5])
         print(forces)
-
+        
 
 
 
