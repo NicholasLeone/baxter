@@ -5,4 +5,4 @@ By using a haptic device, users could deviate from an arm’s preset nominal tra
 The code for the project is incomplete. It has not yet been interfaced to work with 3DSystems' Touch Haptic Device (https://www.3dsystems.com/haptics-devices/touch).
 The code currently allows the user to control the Baxter's end effector by assigning velocities to the end effector's x, y, z, raw, pitch, and yaw. Manipulability measures have been implemented in the code to prevent joint space singularities when moving the arm. 
 
-joint_position_keyboard_2.py is the current version of the code. The code is based off of a script from Rethink Robotics used to control each individual joint of both arms using position controls.
+joint_position_keyboard_2.py is the current version of the code. The code is based off of a script (joint_position_keyboard.py found in baxter_examples/scripts) from Rethink Robotics used to control each individual joint of both arms using position controls.
